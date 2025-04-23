@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "LP/HP Renamer + Find/Replace",
+    "name": "Ed's LPHP Tool",
     "author": "edisan27",
     "version": (1, 1),
     "blender": (4, 3, 2),
