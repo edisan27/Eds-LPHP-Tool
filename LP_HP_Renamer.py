@@ -4,7 +4,7 @@ bl_info = {
     "version": (0, 1),
     "blender": (4, 3, 2),
     "location": "View3D > Sidebar > Rename Tools",
-    "description": "Renames 2 objects based on polycount and allows find/replace",
+    "description": "Bunch of tools I find useful",
     "category": "Object",
 }
 
