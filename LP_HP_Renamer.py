@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Ed's LPHP Tool",
     "author": "edisan27",
-    "version": (1, 1),
+    "version": (0, 1),
     "blender": (4, 3, 2),
     "location": "View3D > Sidebar > Rename Tools",
     "description": "Renames 2 objects based on polycount and allows find/replace",
