@@ -9,6 +9,11 @@ bl_info = {
 }
 
 import bpy
+import os
+
+class ExportCollectionItem(bpy.types.PropertyGroup):
+    name: bpy.props.StringProperty(name="Collection Name")
+    enabled: bpy.props.BoolProperty(name="Enable", default=True)
 
 class RenameSettings(bpy.types.PropertyGroup):
     base_name: bpy.props.StringProperty(name="Object Name", default="MyObject")
@@ -16,7 +21,170 @@ class RenameSettings(bpy.types.PropertyGroup):
     hp_suffix: bpy.props.StringProperty(name="HP Suffix", default="_high")
     find_text: bpy.props.StringProperty(name="Find", default="")
     replace_text: bpy.props.StringProperty(name="Replace", default="")
+    export_path: bpy.props.StringProperty(name="Export Directory", subtype='DIR_PATH')
 
+    export_collections: bpy.props.CollectionProperty(type=ExportCollectionItem)  # (optional legacy/general)
+    highpoly_collections: bpy.props.CollectionProperty(type=ExportCollectionItem)
+    lowpoly_collections: bpy.props.CollectionProperty(type=ExportCollectionItem)
+
+    # New properties for export filenames
+    highpoly_filename: bpy.props.StringProperty(name="High Poly Filename", default="MeshName_high.fbx")
+    lowpoly_filename: bpy.props.StringProperty(name="Low Poly Filename", default="MeshName_low.fbx")
+
+# ------------------------
+# Helper Function to Initialize Collections
+# ------------------------
+
+def initialize_export_collections(context):
+    settings = context.scene.rename_settings
+    # Only refresh if it's empty
+    if not settings.export_collections:
+        settings.export_collections.clear()
+        for col in bpy.data.collections:
+            item = settings.export_collections.add()
+            item.name = col.name
+
+def get_all_objects_from_collection(collection):
+    objects = list(collection.objects)
+    for child in collection.children:
+        objects.extend(get_all_objects_from_collection(child))
+    return objects
+
+class REFRESH_OT_export_collections(bpy.types.Operator):
+    bl_idname = "export_collections.refresh"
+    bl_label = "Refresh Collections"
+    bl_description = "Refresh collection lists for HP and LP export"
+
+    def execute(self, context):
+        settings = context.scene.rename_settings
+
+        # Clear existing collections from both lists
+        settings.highpoly_collections.clear()
+        settings.lowpoly_collections.clear()
+
+        # Add collections to both lists
+        for col in bpy.data.collections:
+            if col.objects:  # Only add collections that contain objects
+                item_hp = settings.highpoly_collections.add()
+                item_hp.name = col.name
+                item_hp.enabled = False  # Default to disabled
+
+                item_lp = settings.lowpoly_collections.add()
+                item_lp.name = col.name
+                item_lp.enabled = False  # Default to disabled
+
+        self.report({'INFO'}, "Refreshed collection lists.")
+        return {'FINISHED'}
+
+class EXPORT_OT_highpoly(bpy.types.Operator):
+    bl_idname = "export_collections.export_highpoly"
+    bl_label = "Export High Poly Collections"
+
+    def execute(self, context):
+        settings = context.scene.rename_settings
+        export_path = bpy.path.abspath(settings.export_path)
+        export_filename = settings.highpoly_filename
+        full_export_path = os.path.join(export_path, export_filename)
+
+        all_objects = []
+        for item in settings.highpoly_collections:
+            if item.enabled:
+                col = bpy.data.collections.get(item.name)
+                if col:
+                    all_objects.extend([obj for obj in col.objects if obj.type == 'MESH'])
+
+        if not all_objects:
+            self.report({'WARNING'}, "No objects found in selected high poly collections.")
+            return {'CANCELLED'}
+
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in all_objects:
+            obj.select_set(True)
+
+        bpy.ops.export_scene.fbx(
+            filepath=full_export_path,
+            use_selection=True,
+            apply_unit_scale=True,
+            bake_space_transform=True
+        )
+
+        self.report({'INFO'}, f"Exported High Poly FBX to {export_filename}")
+        return {'FINISHED'}
+
+class EXPORT_OT_lowpoly(bpy.types.Operator):
+    bl_idname = "export_collections.export_lowpoly"
+    bl_label = "Export Low Poly Collections"
+
+    def execute(self, context):
+        settings = context.scene.rename_settings
+        export_path = bpy.path.abspath(settings.export_path)
+        export_filename = settings.lowpoly_filename
+        full_export_path = os.path.join(export_path, export_filename)
+
+        all_objects = []
+        for item in settings.lowpoly_collections:
+            if item.enabled:
+                col = bpy.data.collections.get(item.name)
+                if col:
+                    all_objects.extend([obj for obj in col.objects if obj.type == 'MESH'])
+
+        if not all_objects:
+            self.report({'WARNING'}, "No objects found in selected low poly collections.")
+            return {'CANCELLED'}
+
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in all_objects:
+            obj.select_set(True)
+
+        bpy.ops.export_scene.fbx(
+            filepath=full_export_path,
+            use_selection=True,
+            apply_unit_scale=True,
+            bake_space_transform=True
+        )
+
+        self.report({'INFO'}, f"Exported Low Poly FBX to {export_filename}")
+        return {'FINISHED'}
+
+class OBJECT_OT_RefreshExportCollections(bpy.types.Operator):
+    bl_idname = "object.refresh_export_collections"
+    bl_label = "Refresh Export Collections"
+    bl_description = "Refresh the list of collections for export"
+
+    def execute(self, context):
+        scene = context.scene
+        settings = scene.rename_settings
+
+        # Clear previous collections
+        settings.highpoly_collections.clear()
+        settings.lowpoly_collections.clear()
+
+        # Add all collections to the list, including empty ones
+        for col in bpy.data.collections:
+            if col.objects:  # Check if the collection has any objects (not empty)
+                # Add it to the high poly list by default
+                item_hp = settings.highpoly_collections.add()
+                item_hp.name = col.name
+                item_hp.enabled = False  # Default to disabled
+
+                # Add it to the low poly list by default
+                item_lp = settings.lowpoly_collections.add()
+                item_lp.name = col.name
+                item_lp.enabled = False  # Default to disabled
+            else:
+                # Force add empty collections (collections with only subcollections)
+                item_hp = settings.highpoly_collections.add()
+                item_hp.name = col.name
+                item_hp.enabled = False  # Default to disabled
+
+                item_lp = settings.lowpoly_collections.add()
+                item_lp.name = col.name
+                item_lp.enabled = False  # Default to disabled
+
+        self.report({'INFO'}, "All collections (including empty) have been added.")
+        return {'FINISHED'}
+
+            
 class OBJECT_OT_RenameLPHP(bpy.types.Operator):
     bl_idname = "object.rename_lphp"
     bl_label = "Rename LP/HP"
@@ -151,8 +319,6 @@ class OBJECT_OT_SwapLPHP(bpy.types.Operator):
         self.report({'INFO'}, f"Swapped: {lp_obj.name} <--> {hp_obj.name}")
         return {'FINISHED'}
 
-
-
 class OBJECT_OT_FindReplaceNames(bpy.types.Operator):
     bl_idname = "object.find_replace_names"
     bl_label = "Find & Replace"
@@ -227,6 +393,67 @@ class OBJECT_OT_VerifyLPPairs(bpy.types.Operator):
         self.report({'INFO'}, full_msg if full_msg else "No matching LP/HP suffixes found.")
         return {'FINISHED'}
 
+class OBJECT_OT_ExportSelectedCollections(bpy.types.Operator):
+    bl_idname = "object.export_selected_collections"
+    bl_label = "Export Selected Collections"
+    bl_description = "Export all mesh objects in selected collections as a single FBX file"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        # Ensure that we're working in a valid context
+        settings = bpy.context.scene.rename_settings  # Access scene rename settings
+        export_path = bpy.path.abspath(settings.export_path)
+
+        if not export_path:
+            self.report({'ERROR'}, "Export path is not set.")
+            return {'CANCELLED'}
+
+        # Collect selected collections based on checkbox list
+        selected_collections = [
+            bpy.data.collections.get(item.name)
+            for item in settings.export_collections if item.include
+        ]
+
+        if not selected_collections:
+            self.report({'ERROR'}, "No collections selected for export.")
+            return {'CANCELLED'}
+
+        # Collect all mesh objects from selected collections
+        all_mesh_objects = []
+        for col in selected_collections:
+            for obj in get_all_objects_from_collection(col):
+                if obj.type == 'MESH' and obj not in all_mesh_objects:
+                    all_mesh_objects.append(obj)
+
+        if not all_mesh_objects:
+            self.report({'WARNING'}, "No mesh objects found in selected collections.")
+            return {'CANCELLED'}
+
+        # Prepare for export
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in all_mesh_objects:
+            obj.select_set(True)
+        context.view_layer.objects.active = all_mesh_objects[0]
+
+        # Use the first collection's name as filename
+        export_filename = selected_collections[0].name + ".fbx"
+        full_export_path = os.path.join(export_path, export_filename)
+
+        # Export as FBX
+        bpy.ops.export_scene.fbx(
+            filepath=full_export_path,
+            use_selection=True,
+            apply_unit_scale=True,
+            bake_space_transform=True,
+            object_types={'MESH'},
+            mesh_smooth_type='OFF',
+            use_mesh_modifiers=True,
+            add_leaf_bones=False,
+            path_mode='AUTO',
+        )
+
+        self.report({'INFO'}, f"Exported to {full_export_path}")
+        return {'FINISHED'}
 
 
 class VIEW3D_PT_RenamePanel(bpy.types.Panel):
@@ -235,10 +462,12 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Rename Tools'
+    bl_label = "LP/HP Quick Exporter"
+    bl_idname = "VIEW3D_PT_lp_hp_exporter"
 
     def draw(self, context):
         layout = self.layout
-        settings = context.scene.rename_settings
+        settings = bpy.context.scene.rename_settings
 
         box1 = layout.box()
         box1.label(text="LP/HP Rename", icon="MODIFIER")
@@ -258,9 +487,49 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
         box2.prop(settings, "replace_text")
         box2.operator("object.find_replace_names", icon="VIEWZOOM")
 
+        layout.separator()
+
+        layout.label(text="Export Collections")
+        layout.operator("export_collections.refresh", icon='FILE_REFRESH')  # Refresh button
+
+        # High Poly section
+        box_hp = layout.box()
+        box_hp.label(text="High Poly Collections:")
+        for item in settings.highpoly_collections:
+            box_hp.prop(item, "enabled", text=item.name)
+        
+        # Input for high poly export filename
+        layout.prop(settings, "highpoly_filename")
+        layout.operator("export_collections.export_highpoly", icon='EXPORT')
+
+        # Low Poly section
+        box_lp = layout.box()
+        box_lp.label(text="Low Poly Collections:")
+        for item in settings.lowpoly_collections:
+            box_lp.prop(item, "enabled", text=item.name)
+
+        # Input for low poly export filename
+        layout.prop(settings, "lowpoly_filename")
+        layout.operator("export_collections.export_lowpoly", icon='EXPORT')
+
+        # Export path field
+        layout.prop(settings, "export_path")
 
 
-classes = [RenameSettings, OBJECT_OT_RenameLPHP, OBJECT_OT_SwapLPHP, OBJECT_OT_VerifyLPPairs, OBJECT_OT_FindReplaceNames, VIEW3D_PT_RenamePanel]
+classes = [
+    ExportCollectionItem,
+    RenameSettings, 
+    OBJECT_OT_RenameLPHP, 
+    OBJECT_OT_SwapLPHP, 
+    OBJECT_OT_VerifyLPPairs, 
+    OBJECT_OT_FindReplaceNames, 
+    VIEW3D_PT_RenamePanel,
+    OBJECT_OT_ExportSelectedCollections,
+    OBJECT_OT_RefreshExportCollections,
+    REFRESH_OT_export_collections,
+    EXPORT_OT_highpoly,
+    EXPORT_OT_lowpoly,
+]
 
 def register():
     for cls in classes:
@@ -271,6 +540,7 @@ def unregister():
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.rename_settings
+    del bpy.types.Scene.export_collection_names
 
 if __name__ == "__main__":
     register()
