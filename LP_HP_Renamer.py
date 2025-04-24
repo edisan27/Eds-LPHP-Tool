@@ -623,23 +623,16 @@ class VIEW3D_PT_WeightedNormalizerPanel(bpy.types.Panel):
         layout = self.layout
         settings = bpy.context.scene.rename_settings
 
-        box = layout.box()
-        box.label(text="Weighted Normalizer", icon='MOD_VERTEX_WEIGHT')
+        box1 = layout.box()
+        box1.label(text="Weighted Normalizer", icon='MOD_VERTEX_WEIGHT')
+        box1.operator("object.add_weighted_normal", text="Add Weighted Normal", icon='EVENT_NDOF_BUTTON_PLUS')
+        box1.operator("object.del_weighted_normal", text="Delete Weighted Normal", icon='EVENT_NDOF_BUTTON_MINUS')
+        box1.operator("object.verify_weighted_normal", text="Verify Weighted Normal", icon='CHECKMARK')
 
-        row = box.row()
-        row.operator("object.add_weighted_normal", text="Add Weighted Normal", icon='EVENT_NDOF_BUTTON_PLUS')
-
-        row = box.row()
-        row.operator("object.del_weighted_normal", text="Delete Weighted Normal", icon='EVENT_NDOF_BUTTON_MINUS')
-
-        row = box.row()
-        row.operator("object.verify_weighted_normal", text="Verify Weighted Normal", icon='CHECKMARK')
-
-        row = box.row()
-        row.operator("object.enable_keep_sharp", text="Enable Keep Sharp", icon='CHECKBOX_HLT')
-
-        row = box.row()
-        row.operator("object.disable_keep_sharp", text="Disable Keep Sharp", icon='CHECKBOX_DEHLT')
+        box2 = box1.box()
+        box2.label(text="Weighted Normal Options", icon="PREFERENCES")
+        box2.operator("object.enable_keep_sharp", text="Enable Keep Sharp", icon='CHECKBOX_HLT')
+        box2.operator("object.disable_keep_sharp", text="Disable Keep Sharp", icon='CHECKBOX_DEHLT')
 
 
 
