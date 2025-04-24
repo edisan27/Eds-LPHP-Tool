@@ -50,147 +50,10 @@ def get_all_objects_from_collection(collection):
         objects.extend(get_all_objects_from_collection(child))
     return objects
 
-class EXPORT_OT_highpoly(bpy.types.Operator):
-    bl_idname = "export_collections.export_highpoly"
-    bl_label = "Export High Poly Collections"
 
-    def execute(self, context):
-        import os
-        import uuid
+# Operator Function Classes
 
-        settings = context.scene.rename_settings
-        export_path = bpy.path.abspath(settings.export_path)
-        export_filename = settings.highpoly_filename
-        full_export_path = os.path.join(export_path, export_filename)
-
-        export_objects = []
-
-        for item in settings.highpoly_collections:
-            if item.enabled:
-                col = bpy.data.collections.get(item.name)
-                if col:
-                    for obj in col.all_objects:
-                        if obj.type == 'MESH':
-                            export_objects.append(obj)
-
-        if not export_objects:
-            self.report({'WARNING'}, "No mesh objects found in selected collections.")
-            return {'CANCELLED'}
-
-        # Create a temporary export collection
-        temp_col_name = f"__temp_export_{uuid.uuid4().hex[:6]}"
-        temp_collection = bpy.data.collections.new(temp_col_name)
-        context.scene.collection.children.link(temp_collection)
-
-        # Deselect everything
-        bpy.ops.object.select_all(action='DESELECT')
-
-        # Link export objects to temp collection & unhide them temporarily
-        for obj in export_objects:
-            temp_collection.objects.link(obj)
-            obj.hide_set(False)
-            obj.hide_viewport = False
-            obj.hide_render = False
-            obj.select_set(True)
-
-        # Export
-        bpy.ops.export_scene.fbx(
-            filepath=full_export_path,
-            use_selection=True,
-            apply_unit_scale=True,
-            bake_space_transform=True
-        )
-
-        # Cleanup: Unlink temp collection and delete it
-        context.scene.collection.children.unlink(temp_collection)
-        bpy.data.collections.remove(temp_collection)
-
-        # Deselect everything again
-        bpy.ops.object.select_all(action='DESELECT')
-
-        self.report({'INFO'}, f"Exported High Poly FBX to {export_filename}")
-        return {'FINISHED'}
-
-class EXPORT_OT_lowpoly(bpy.types.Operator):
-    bl_idname = "export_collections.export_lowpoly"
-    bl_label = "Export Low Poly Collections"
-
-    def execute(self, context):
-        settings = context.scene.rename_settings
-        export_path = settings.export_path
-        export_filename = settings.lowpoly_filename
-
-        if not export_path:
-            self.report({'ERROR'}, "Export path is not set")
-            return {'CANCELLED'}
-
-        # Convert relative path (//) to absolute path
-        if export_path.startswith('//'):
-            export_path = bpy.path.abspath(export_path)
-
-        # Ensure export path is absolute
-        if not os.path.isabs(export_path):
-            self.report({'ERROR'}, f"Invalid export path: {export_path}")
-            return {'CANCELLED'}
-
-        # Make sure the directory exists
-        if not os.path.exists(export_path):
-            self.report({'ERROR'}, f"Export path does not exist: {export_path}")
-            return {'CANCELLED'}
-
-        full_export_path = os.path.join(export_path, export_filename)
-
-        # Make sure the file path exists
-        all_mesh_objects = []
-        for item in settings.lowpoly_collections:
-            if item.enabled:
-                collection = bpy.data.collections.get(item.name)
-                if collection:
-                    all_mesh_objects.extend(get_all_objects_from_collection(collection))
-
-        if not all_mesh_objects:
-            self.report({'WARNING'}, "No mesh objects found to export")
-            return {'CANCELLED'}
-
-        bpy.ops.object.select_all(action='DESELECT')
-        for obj in all_mesh_objects:
-            obj.select_set(True)
-
-        # Export the selected meshes as FBX
-        bpy.ops.export_scene.fbx(
-            filepath=full_export_path,
-            use_selection=True,
-            apply_unit_scale=True,
-            bake_space_transform=True
-        )
-
-        self.report({'INFO'}, f"Exported Low Poly FBX: {export_filename}")
-        return {'FINISHED'}
-
-class OBJECT_OT_RefreshExportCollections(bpy.types.Operator):
-    bl_idname = "object.refresh_export_collections"
-    bl_label = "Refresh Export Collections"
-    bl_description = "Refresh the list of collections for export"
-
-    def execute(self, context):
-        settings = context.scene.rename_settings
-        settings.highpoly_collections.clear()
-        settings.lowpoly_collections.clear()
-
-        for col in bpy.data.collections:
-            print(f"Adding collection: {col.name}")  # This line is critical for debugging
-
-            item_hp = settings.highpoly_collections.add()
-            item_hp.name = col.name
-            item_hp.enabled = False
-
-            item_lp = settings.lowpoly_collections.add()
-            item_lp.name = col.name
-            item_lp.enabled = False
-
-        self.report({'INFO'}, "Refreshed collection lists.")
-        return {'FINISHED'}
-
+# Renamer
 class OBJECT_OT_RenameLPHP(bpy.types.Operator):
     bl_idname = "object.rename_lphp"
     bl_label = "Rename LP/HP"
@@ -229,7 +92,6 @@ class OBJECT_OT_RenameLPHP(bpy.types.Operator):
 
         self.report({'INFO'}, f"Renamed to: {lp_obj.name}, {hp_obj.name}")
         return {'FINISHED'}
-
 class OBJECT_OT_SwapLPHP(bpy.types.Operator):
     bl_idname = "object.swap_lphp"
     bl_label = "Swap LP/HP"
@@ -324,31 +186,6 @@ class OBJECT_OT_SwapLPHP(bpy.types.Operator):
 
         self.report({'INFO'}, f"Swapped: {lp_obj.name} <--> {hp_obj.name}")
         return {'FINISHED'}
-
-class OBJECT_OT_FindReplaceNames(bpy.types.Operator):
-    bl_idname = "object.find_replace_names"
-    bl_label = "Find & Replace"
-    bl_description = "Find and replace in names of selected objects"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        settings = context.scene.rename_settings
-        find = settings.find_text
-        replace = settings.replace_text
-
-        if not find:
-            self.report({'WARNING'}, "Nothing to find")
-            return {'CANCELLED'}
-
-        count = 0
-        for obj in context.selected_objects:
-            if find in obj.name:
-                obj.name = obj.name.replace(find, replace)
-                count += 1
-
-        self.report({'INFO'}, f"Replaced in {count} object(s)")
-        return {'FINISHED'}
-
 class OBJECT_OT_VerifyLPPairs(bpy.types.Operator):
     bl_idname = "object.verify_lp_pairs"
     bl_label = "Verify LP/HP Pairs"
@@ -399,6 +236,175 @@ class OBJECT_OT_VerifyLPPairs(bpy.types.Operator):
         self.report({'INFO'}, full_msg if full_msg else "No matching LP/HP suffixes found.")
         return {'FINISHED'}
 
+# Find and Replace
+class OBJECT_OT_FindReplaceNames(bpy.types.Operator):
+    bl_idname = "object.find_replace_names"
+    bl_label = "Find & Replace"
+    bl_description = "Find and replace in names of selected objects"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        settings = context.scene.rename_settings
+        find = settings.find_text
+        replace = settings.replace_text
+
+        if not find:
+            self.report({'WARNING'}, "Nothing to find")
+            return {'CANCELLED'}
+
+        count = 0
+        for obj in context.selected_objects:
+            if find in obj.name:
+                obj.name = obj.name.replace(find, replace)
+                count += 1
+
+        self.report({'INFO'}, f"Replaced in {count} object(s)")
+        return {'FINISHED'}
+
+# Collection Exporter
+class OBJECT_OT_RefreshExportCollections(bpy.types.Operator):
+    bl_idname = "object.refresh_export_collections"
+    bl_label = "Refresh Export Collections"
+    bl_description = "Refresh the list of collections for export"
+
+    def execute(self, context):
+        settings = context.scene.rename_settings
+        settings.highpoly_collections.clear()
+        settings.lowpoly_collections.clear()
+
+        for col in bpy.data.collections:
+            print(f"Adding collection: {col.name}")  # This line is critical for debugging
+
+            item_hp = settings.highpoly_collections.add()
+            item_hp.name = col.name
+            item_hp.enabled = False
+
+            item_lp = settings.lowpoly_collections.add()
+            item_lp.name = col.name
+            item_lp.enabled = False
+
+        self.report({'INFO'}, "Refreshed collection lists.")
+        return {'FINISHED'}
+class EXPORT_OT_highpoly(bpy.types.Operator):
+    bl_idname = "export_collections.export_highpoly"
+    bl_label = "Export High Poly Collections"
+
+    def execute(self, context):
+        import os
+        import uuid
+
+        settings = context.scene.rename_settings
+        export_path = bpy.path.abspath(settings.export_path)
+        export_filename = settings.highpoly_filename
+        full_export_path = os.path.join(export_path, export_filename)
+
+        export_objects = []
+
+        for item in settings.highpoly_collections:
+            if item.enabled:
+                col = bpy.data.collections.get(item.name)
+                if col:
+                    for obj in col.all_objects:
+                        if obj.type == 'MESH':
+                            export_objects.append(obj)
+
+        if not export_objects:
+            self.report({'WARNING'}, "No mesh objects found in selected collections.")
+            return {'CANCELLED'}
+
+        # Create a temporary export collection
+        temp_col_name = f"__temp_export_{uuid.uuid4().hex[:6]}"
+        temp_collection = bpy.data.collections.new(temp_col_name)
+        context.scene.collection.children.link(temp_collection)
+
+        # Deselect everything
+        bpy.ops.object.select_all(action='DESELECT')
+
+        # Link export objects to temp collection & unhide them temporarily
+        for obj in export_objects:
+            temp_collection.objects.link(obj)
+            obj.hide_set(False)
+            obj.hide_viewport = False
+            obj.hide_render = False
+            obj.select_set(True)
+
+        # Export
+        bpy.ops.export_scene.fbx(
+            filepath=full_export_path,
+            use_selection=True,
+            apply_unit_scale=True,
+            bake_space_transform=True
+        )
+
+        # Cleanup: Unlink temp collection and delete it
+        context.scene.collection.children.unlink(temp_collection)
+        bpy.data.collections.remove(temp_collection)
+
+        # Deselect everything again
+        bpy.ops.object.select_all(action='DESELECT')
+
+        self.report({'INFO'}, f"Exported High Poly FBX to {export_filename}")
+        return {'FINISHED'}
+class EXPORT_OT_lowpoly(bpy.types.Operator):
+    bl_idname = "export_collections.export_lowpoly"
+    bl_label = "Export Low Poly Collections"
+
+    def execute(self, context):
+        import os
+        import uuid
+
+        settings = context.scene.rename_settings
+        export_path = bpy.path.abspath(settings.export_path)
+        export_filename = settings.highpoly_filename
+        full_export_path = os.path.join(export_path, export_filename)
+
+        export_objects = []
+
+        for item in settings.lowpoly_collections:
+            if item.enabled:
+                col = bpy.data.collections.get(item.name)
+                if col:
+                    for obj in col.all_objects:
+                        if obj.type == 'MESH':
+                            export_objects.append(obj)
+
+        if not export_objects:
+            self.report({'WARNING'}, "No mesh objects found in selected collections.")
+            return {'CANCELLED'}
+
+        # Create a temporary export collection
+        temp_col_name = f"__temp_export_{uuid.uuid4().hex[:6]}"
+        temp_collection = bpy.data.collections.new(temp_col_name)
+        context.scene.collection.children.link(temp_collection)
+
+        # Deselect everything
+        bpy.ops.object.select_all(action='DESELECT')
+
+        # Link export objects to temp collection & unhide them temporarily
+        for obj in export_objects:
+            temp_collection.objects.link(obj)
+            obj.hide_set(False)
+            obj.hide_viewport = False
+            obj.hide_render = False
+            obj.select_set(True)
+
+        # Export
+        bpy.ops.export_scene.fbx(
+            filepath=full_export_path,
+            use_selection=True,
+            apply_unit_scale=True,
+            bake_space_transform=True
+        )
+
+        # Cleanup: Unlink temp collection and delete it
+        context.scene.collection.children.unlink(temp_collection)
+        bpy.data.collections.remove(temp_collection)
+
+        # Deselect everything again
+        bpy.ops.object.select_all(action='DESELECT')
+
+        self.report({'INFO'}, f"Exported Low Poly FBX to {export_filename}")
+        return {'FINISHED'}
 class OBJECT_OT_ExportSelectedCollections(bpy.types.Operator):
     bl_idname = "object.export_selected_collections"
     bl_label = "Export Selected Collections"
@@ -461,9 +467,89 @@ class OBJECT_OT_ExportSelectedCollections(bpy.types.Operator):
         self.report({'INFO'}, f"Exported to {full_export_path}")
         return {'FINISHED'}
 
+# Weighted Normalizer
+class OBJECT_OT_AddWeightedNormal(bpy.types.Operator):
+    bl_idname = "object.add_weighted_normal"
+    bl_label = "Add Weighted Normal"
+    bl_description = "Add Weighted Normal modifier with Keep Sharp to selected objects"
+
+    def execute(self, context):
+        added = 0
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                if not any(mod.type == 'WEIGHTED_NORMAL' for mod in obj.modifiers):
+                    mod = obj.modifiers.new(name="WeightedNormal", type='WEIGHTED_NORMAL')
+                    mod.keep_sharp = True
+                    added += 1
+        self.report({'INFO'}, f"Added Weighted Normal to {added} object(s).")
+        return {'FINISHED'}
+class OBJECT_OT_DelWeightedNormal(bpy.types.Operator):
+    bl_idname = "object.del_weighted_normal"
+    bl_label = "Delete Weighted Normal"
+    bl_description = "Delete Weighted Normal modifier from selected objects"
+
+    def execute(self, context):
+        deleted = 0
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                for mod in obj.modifiers:
+                    if mod.type == 'WEIGHTED_NORMAL':
+                        obj.modifiers.remove(mod)
+                        deleted += 1
+                        break  # Delete only one per object
+        self.report({'INFO'}, f"Deleted Weighted Normal from {deleted} object(s).")
+        return {'FINISHED'}
+class OBJECT_OT_VerifyWeightedNormal(bpy.types.Operator):
+    bl_idname = "object.verify_weighted_normal"
+    bl_label = "Verify Weighted Normal"
+    bl_description = "Check if selected objects have a Weighted Normal modifier"
+
+    def execute(self, context):
+        missing = []
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                if not any(mod.type == 'WEIGHTED_NORMAL' for mod in obj.modifiers):
+                    missing.append(obj.name)
+        if missing:
+            self.report({'WARNING'}, f"Missing Weighted Normal: {', '.join(missing)}")
+        else:
+            self.report({'INFO'}, "All selected objects have Weighted Normal.")
+        return {'FINISHED'}
+class OBJECT_OT_EnableKeepSharp(bpy.types.Operator):
+    bl_idname = "object.enable_keep_sharp"
+    bl_label = "Enable Keep Sharp"
+    bl_description = "Enable Keep Sharp for Weighted Normal modifiers in selected objects"
+
+    def execute(self, context):
+        count = 0
+        for obj in context.selected_objects:
+            for mod in obj.modifiers:
+                if mod.type == 'WEIGHTED_NORMAL':
+                    mod.keep_sharp = True
+                    count += 1
+        self.report({'INFO'}, f"Enabled Keep Sharp on {count} modifier(s).")
+        return {'FINISHED'}
+class OBJECT_OT_DisableKeepSharp(bpy.types.Operator):
+    bl_idname = "object.disable_keep_sharp"
+    bl_label = "Disable Keep Sharp"
+    bl_description = "Disable Keep Sharp for Weighted Normal modifiers in selected objects"
+
+    def execute(self, context):
+        count = 0
+        for obj in context.selected_objects:
+            for mod in obj.modifiers:
+                if mod.type == 'WEIGHTED_NORMAL':
+                    mod.keep_sharp = False
+                    count += 1
+        self.report({'INFO'}, f"Disabled Keep Sharp on {count} modifier(s).")
+        return {'FINISHED'}
+
+
+# Panels
+
 class VIEW3D_PT_RenamePanel(bpy.types.Panel):
     bl_label = "LP/HP Renamer"
-    bl_idname = "VIEW3D_PT_rename_lphp"
+    bl_idname = "VIEW3D_PT_a_rename_lphp"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Ed's Tools"
@@ -491,7 +577,7 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
 
 class VIEW3D_PT_ExportPanel(bpy.types.Panel):
     bl_label = "LP/HP Collections Exporter"
-    bl_idname = "VIEW3D_PT_lp_hp_exporter"
+    bl_idname = "VIEW3D_PT_b_lphp_exporter"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Ed's Tools"
@@ -526,20 +612,60 @@ class VIEW3D_PT_ExportPanel(bpy.types.Panel):
         box_lp.prop(settings, "lowpoly_filename")
         box_lp.operator("export_collections.export_lowpoly", icon='EXPORT')
 
+class VIEW3D_PT_WeightedNormalizerPanel(bpy.types.Panel):
+    bl_label = "LP Weighted Normalizer"
+    bl_idname = "VIEW3D_PT_weighted_normalizer_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Ed's Tools"
+
+    def draw(self, context):
+        layout = self.layout
+        settings = bpy.context.scene.rename_settings
+
+        box = layout.box()
+        box.label(text="Weighted Normalizer", icon='MOD_VERTEX_WEIGHT')
+
+        row = box.row()
+        row.operator("object.add_weighted_normal", text="Add Weighted Normal", icon='EVENT_NDOF_BUTTON_PLUS')
+
+        row = box.row()
+        row.operator("object.del_weighted_normal", text="Delete Weighted Normal", icon='EVENT_NDOF_BUTTON_MINUS')
+
+        row = box.row()
+        row.operator("object.verify_weighted_normal", text="Verify Weighted Normal", icon='CHECKMARK')
+
+        row = box.row()
+        row.operator("object.enable_keep_sharp", text="Enable Keep Sharp", icon='CHECKBOX_HLT')
+
+        row = box.row()
+        row.operator("object.disable_keep_sharp", text="Disable Keep Sharp", icon='CHECKBOX_DEHLT')
+
+
 
 classes = [
     ExportCollectionItem,
     RenameSettings, 
+
     OBJECT_OT_RenameLPHP, 
     OBJECT_OT_SwapLPHP, 
     OBJECT_OT_VerifyLPPairs, 
+
     OBJECT_OT_FindReplaceNames, 
     VIEW3D_PT_RenamePanel,
+
     VIEW3D_PT_ExportPanel,
     OBJECT_OT_ExportSelectedCollections,
     OBJECT_OT_RefreshExportCollections,
     EXPORT_OT_highpoly,
     EXPORT_OT_lowpoly,
+
+    VIEW3D_PT_WeightedNormalizerPanel,
+    OBJECT_OT_AddWeightedNormal,
+    OBJECT_OT_DelWeightedNormal,
+    OBJECT_OT_VerifyWeightedNormal,
+    OBJECT_OT_EnableKeepSharp,
+    OBJECT_OT_DisableKeepSharp,
 ]
 
 def register():

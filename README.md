@@ -10,10 +10,10 @@ Blender Tool/Plugin/Addon to help separating High Poly and Low Poly export for g
 - [x] SwapLP/HP name and collection location
 - [x] Verify LP/HP Pairs 
 - [x] Standard Find and Replace Names
-- [x] Quick Export Only Selected Collection (partially working)
+- [x] Quick Export Only Selected Collection (Fully Working with export hidden collections and child collections)
+- [x] Weighted Normalizer (add Weighted Normal with Keep Sharp ticked)
+- [x] Verify Weighted Normal with Keep Sharp is it in the objects or not
 
 ### To Do:
 - [ ] Seam to Sharp and vice versa
-- [ ] Weighted Normalizer (add Weighted Normal with Keep Sharp ticked)
-- [ ] Verify Weighted Normal with Keep Sharp is it in the objects or not
 - [ ] Toggle Wireframe for Selected objects
