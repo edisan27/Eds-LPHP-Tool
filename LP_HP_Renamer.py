@@ -50,78 +50,50 @@ def get_all_objects_from_collection(collection):
         objects.extend(get_all_objects_from_collection(child))
     return objects
 
-class REFRESH_OT_export_collections(bpy.types.Operator):
-    bl_idname = "export_collections.refresh"
-    bl_label = "Refresh Collections"
-    bl_description = "Refresh collection lists for HP and LP export"
-
-    def execute(self, context):
-        settings = context.scene.rename_settings
-
-        # Clear existing collections from both lists
-        settings.highpoly_collections.clear()
-        settings.lowpoly_collections.clear()
-
-        # Add collections to both lists
-        for col in bpy.data.collections:
-            if col.objects:  # Only add collections that contain objects
-                item_hp = settings.highpoly_collections.add()
-                item_hp.name = col.name
-                item_hp.enabled = False  # Default to disabled
-
-                item_lp = settings.lowpoly_collections.add()
-                item_lp.name = col.name
-                item_lp.enabled = False  # Default to disabled
-
-        self.report({'INFO'}, "Refreshed collection lists.")
-        return {'FINISHED'}
-
 class EXPORT_OT_highpoly(bpy.types.Operator):
     bl_idname = "export_collections.export_highpoly"
     bl_label = "Export High Poly Collections"
 
     def execute(self, context):
+        import os
+        import uuid
+
         settings = context.scene.rename_settings
-        export_path = settings.export_path
+        export_path = bpy.path.abspath(settings.export_path)
         export_filename = settings.highpoly_filename
-
-        if not export_path:
-            self.report({'ERROR'}, "Export path is not set")
-            return {'CANCELLED'}
-
-        # Convert relative path (//) to absolute path
-        if export_path.startswith('//'):
-            export_path = bpy.path.abspath(export_path)
-
-        # Ensure export path is absolute
-        if not os.path.isabs(export_path):
-            self.report({'ERROR'}, f"Invalid export path: {export_path}")
-            return {'CANCELLED'}
-
-        # Make sure the directory exists
-        if not os.path.exists(export_path):
-            self.report({'ERROR'}, f"Export path does not exist: {export_path}")
-            return {'CANCELLED'}
-
         full_export_path = os.path.join(export_path, export_filename)
 
-        # Make sure the file path exists
-        all_mesh_objects = []
+        export_objects = []
+
         for item in settings.highpoly_collections:
             if item.enabled:
-                collection = bpy.data.collections.get(item.name)
-                if collection:
-                    all_mesh_objects.extend(get_all_objects_from_collection(collection))
+                col = bpy.data.collections.get(item.name)
+                if col:
+                    for obj in col.all_objects:
+                        if obj.type == 'MESH':
+                            export_objects.append(obj)
 
-        if not all_mesh_objects:
-            self.report({'WARNING'}, "No mesh objects found to export")
+        if not export_objects:
+            self.report({'WARNING'}, "No mesh objects found in selected collections.")
             return {'CANCELLED'}
 
+        # Create a temporary export collection
+        temp_col_name = f"__temp_export_{uuid.uuid4().hex[:6]}"
+        temp_collection = bpy.data.collections.new(temp_col_name)
+        context.scene.collection.children.link(temp_collection)
+
+        # Deselect everything
         bpy.ops.object.select_all(action='DESELECT')
-        for obj in all_mesh_objects:
+
+        # Link export objects to temp collection & unhide them temporarily
+        for obj in export_objects:
+            temp_collection.objects.link(obj)
+            obj.hide_set(False)
+            obj.hide_viewport = False
+            obj.hide_render = False
             obj.select_set(True)
 
-        # Export the selected meshes as FBX
+        # Export
         bpy.ops.export_scene.fbx(
             filepath=full_export_path,
             use_selection=True,
@@ -129,7 +101,14 @@ class EXPORT_OT_highpoly(bpy.types.Operator):
             bake_space_transform=True
         )
 
-        self.report({'INFO'}, f"Exported High Poly FBX: {export_filename}")
+        # Cleanup: Unlink temp collection and delete it
+        context.scene.collection.children.unlink(temp_collection)
+        bpy.data.collections.remove(temp_collection)
+
+        # Deselect everything again
+        bpy.ops.object.select_all(action='DESELECT')
+
+        self.report({'INFO'}, f"Exported High Poly FBX to {export_filename}")
         return {'FINISHED'}
 
 class EXPORT_OT_lowpoly(bpy.types.Operator):
@@ -199,6 +178,8 @@ class OBJECT_OT_RefreshExportCollections(bpy.types.Operator):
         settings.lowpoly_collections.clear()
 
         for col in bpy.data.collections:
+            print(f"Adding collection: {col.name}")  # This line is critical for debugging
+
             item_hp = settings.highpoly_collections.add()
             item_hp.name = col.name
             item_hp.enabled = False
@@ -209,8 +190,6 @@ class OBJECT_OT_RefreshExportCollections(bpy.types.Operator):
 
         self.report({'INFO'}, "Refreshed collection lists.")
         return {'FINISHED'}
-
-
 
 class OBJECT_OT_RenameLPHP(bpy.types.Operator):
     bl_idname = "object.rename_lphp"
@@ -482,7 +461,6 @@ class OBJECT_OT_ExportSelectedCollections(bpy.types.Operator):
         self.report({'INFO'}, f"Exported to {full_export_path}")
         return {'FINISHED'}
 
-
 class VIEW3D_PT_RenamePanel(bpy.types.Panel):
     bl_label = "LP/HP Renamer"
     bl_idname = "VIEW3D_PT_rename_lphp"
@@ -511,7 +489,6 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
 
         layout.separator()
 
-
 class VIEW3D_PT_ExportPanel(bpy.types.Panel):
     bl_label = "LP/HP Collections Exporter"
     bl_idname = "VIEW3D_PT_lp_hp_exporter"
@@ -527,7 +504,7 @@ class VIEW3D_PT_ExportPanel(bpy.types.Panel):
         box1.label(text="LP/HP Export Collections", icon='EXPORT')
         # Export path field
         box1.prop(settings, "export_path")
-        box1.operator("export_collections.refresh", icon='FILE_REFRESH')  # Refresh button
+        box1.operator("object.refresh_export_collections", icon='FILE_REFRESH')  # Refresh button
 
         # High Poly section
         box_hp = box1.box()
@@ -561,7 +538,6 @@ classes = [
     VIEW3D_PT_ExportPanel,
     OBJECT_OT_ExportSelectedCollections,
     OBJECT_OT_RefreshExportCollections,
-    REFRESH_OT_export_collections,
     EXPORT_OT_highpoly,
     EXPORT_OT_lowpoly,
 ]
