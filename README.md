@@ -21,3 +21,4 @@ Blender Tool/Plugin/Addon to help separating High Poly and Low Poly export for g
 - [ ] Seam to Sharp and vice versa
 - [ ] Toggle Wireframe for Selected objects
 - [ ] Add Triangulate Modifier tools
+- [ ] Material Colorizer for separation
