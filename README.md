@@ -1,4 +1,4 @@
-# EdsLpHpTool
+# Ed's LPHP Tool [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) [![Blender](https://img.shields.io/badge/Blender-%23F5792A.svg?logo=blender&logoColor=white)](#) [![ChatGPT](https://img.shields.io/badge/ChatGPT-74aa9c?logo=openai&logoColor=white)](#)  [![Sublime Text](https://img.shields.io/badge/Sublime%20Text-%23575757.svg?logo=sublime-text&logoColor=important)](#)
 Blender Version: 4.3.2
 
 ## What is this?
