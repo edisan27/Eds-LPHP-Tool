@@ -21,15 +21,15 @@ class RenameSettings(bpy.types.PropertyGroup):
     hp_suffix: bpy.props.StringProperty(name="HP Suffix", default="_high")
     find_text: bpy.props.StringProperty(name="Find", default="")
     replace_text: bpy.props.StringProperty(name="Replace", default="")
-    export_path: bpy.props.StringProperty(name="Export Directory", subtype='DIR_PATH')
+    export_path: bpy.props.StringProperty(name="Directory", subtype='DIR_PATH')
 
     export_collections: bpy.props.CollectionProperty(type=ExportCollectionItem)  # (optional legacy/general)
     highpoly_collections: bpy.props.CollectionProperty(type=ExportCollectionItem)
     lowpoly_collections: bpy.props.CollectionProperty(type=ExportCollectionItem)
 
     # New properties for export filenames
-    highpoly_filename: bpy.props.StringProperty(name="High Poly Filename", default="MeshName_high.fbx")
-    lowpoly_filename: bpy.props.StringProperty(name="Low Poly Filename", default="MeshName_low.fbx")
+    highpoly_filename: bpy.props.StringProperty(name="Filename", default="MeshName_high.fbx")
+    lowpoly_filename: bpy.props.StringProperty(name="Filename", default="MeshName_low.fbx")
 
 # ------------------------
 # Helper Function to Initialize Collections
@@ -488,9 +488,7 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_rename_lphp"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'Rename Tools'
-    bl_label = "LP/HP Quick Exporter"
-    bl_idname = "VIEW3D_PT_lp_hp_exporter"
+    bl_category = "Ed's Tools"
 
     def draw(self, context):
         layout = self.layout
@@ -503,10 +501,7 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
         box1.prop(settings, "hp_suffix")
         box1.operator("object.rename_lphp", icon="FONT_DATA")
         box1.operator("object.swap_lphp", icon="FILE_REFRESH")
-
-        layout.separator()  
-        layout.operator("object.verify_lp_pairs", icon="CHECKMARK")
-        layout.separator()
+        box1.operator("object.verify_lp_pairs", icon="CHECKMARK")
 
         box2 = layout.box()
         box2.label(text="Find & Replace", icon="VIEWZOOM")
@@ -516,31 +511,43 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
 
         layout.separator()
 
-        layout.label(text="Export Collections")
-        layout.operator("export_collections.refresh", icon='FILE_REFRESH')  # Refresh button
+
+class VIEW3D_PT_ExportPanel(bpy.types.Panel):
+    bl_label = "LP/HP Collections Exporter"
+    bl_idname = "VIEW3D_PT_lp_hp_exporter"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Ed's Tools"
+
+    def draw(self, context):
+        layout = self.layout
+        settings = bpy.context.scene.rename_settings
+
+        box1 = layout.box()
+        box1.label(text="LP/HP Export Collections", icon='EXPORT')
+        # Export path field
+        box1.prop(settings, "export_path")
+        box1.operator("export_collections.refresh", icon='FILE_REFRESH')  # Refresh button
 
         # High Poly section
-        box_hp = layout.box()
-        box_hp.label(text="High Poly Collections:")
+        box_hp = box1.box()
+        box_hp.label(text="High Poly Collections:", icon='EVENT_UP_ARROW')
         for item in settings.highpoly_collections:
             box_hp.prop(item, "enabled", text=item.name)
         
         # Input for high poly export filename
-        layout.prop(settings, "highpoly_filename")
-        layout.operator("export_collections.export_highpoly", icon='EXPORT')
+        box_hp.prop(settings, "highpoly_filename")
+        box_hp.operator("export_collections.export_highpoly", icon='EXPORT')
 
         # Low Poly section
-        box_lp = layout.box()
-        box_lp.label(text="Low Poly Collections:")
+        box_lp = box1.box()
+        box_lp.label(text="Low Poly Collections:", icon='EVENT_DOWN_ARROW')
         for item in settings.lowpoly_collections:
             box_lp.prop(item, "enabled", text=item.name)
 
         # Input for low poly export filename
-        layout.prop(settings, "lowpoly_filename")
-        layout.operator("export_collections.export_lowpoly", icon='EXPORT')
-
-        # Export path field
-        layout.prop(settings, "export_path")
+        box_lp.prop(settings, "lowpoly_filename")
+        box_lp.operator("export_collections.export_lowpoly", icon='EXPORT')
 
 
 classes = [
@@ -551,6 +558,7 @@ classes = [
     OBJECT_OT_VerifyLPPairs, 
     OBJECT_OT_FindReplaceNames, 
     VIEW3D_PT_RenamePanel,
+    VIEW3D_PT_ExportPanel,
     OBJECT_OT_ExportSelectedCollections,
     OBJECT_OT_RefreshExportCollections,
     REFRESH_OT_export_collections,
@@ -569,10 +577,6 @@ def unregister():
     del bpy.types.Scene.rename_settings
     del bpy.types.Scene.export_collection_names
 
-    if hasattr(bpy.types.Scene, "rename_settings"):
-        del bpy.types.Scene.rename_settings
-    if hasattr(bpy.types.Scene, "export_collection_names"):
-        del bpy.types.Scene.export_collection_names
 
 if __name__ == "__main__":
     register()
