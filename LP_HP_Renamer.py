@@ -94,7 +94,7 @@ class OBJECT_OT_RenameLPHP(bpy.types.Operator):
         return {'FINISHED'}
 class OBJECT_OT_SwapLPHP(bpy.types.Operator):
     bl_idname = "object.swap_lphp"
-    bl_label = "Swap LP/HP"
+    bl_label = "Swap LP/HP (Legacy)"
     bl_description = "Swap LP and HP suffixes and collection positions of selected objects"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -186,6 +186,134 @@ class OBJECT_OT_SwapLPHP(bpy.types.Operator):
 
         self.report({'INFO'}, f"Swapped: {lp_obj.name} <--> {hp_obj.name}")
         return {'FINISHED'}
+class OBJECT_OT_SwapLPHPNames(bpy.types.Operator):
+    bl_idname = "object.swap_lphp_names"
+    bl_label = "Swap LP/HP Names"
+    bl_description = "Rename LP and HP objects based on polycount"
+
+    def execute(self, context):
+        settings = context.scene.rename_settings
+        selected = context.selected_objects
+        lp_suffix = settings.lp_suffix
+        hp_suffix = settings.hp_suffix
+
+        def strip_suffix(name):
+            for suffix in (lp_suffix, hp_suffix):
+                if name.endswith(suffix):
+                    return name[:-len(suffix)]
+            return None
+
+        def get_pair(obj):
+            base = strip_suffix(obj.name)
+            if not base:
+                return None, None, None
+
+            lp_candidate = bpy.data.objects.get(base + lp_suffix)
+            hp_candidate = bpy.data.objects.get(base + hp_suffix)
+
+            if lp_candidate and hp_candidate:
+                return lp_candidate, hp_candidate, base
+            return None, None, None
+
+        if len(selected) == 1:
+            lp_obj, hp_obj, base = get_pair(selected[0])
+            if not (lp_obj and hp_obj):
+                self.report({'ERROR'}, "Could not find both LP and HP objects for selected object.")
+                return {'CANCELLED'}
+
+        elif len(selected) == 2:
+            base1 = strip_suffix(selected[0].name)
+            base2 = strip_suffix(selected[1].name)
+            if base1 != base2 or not base1:
+                self.report({'ERROR'}, "Selected objects must share the same base name.")
+                return {'CANCELLED'}
+            base = base1
+            obj1, obj2 = selected
+            poly1 = len(obj1.data.polygons)
+            poly2 = len(obj2.data.polygons)
+            lp_obj, hp_obj = (obj1, obj2) if poly1 < poly2 else (obj2, obj1)
+        else:
+            self.report({'ERROR'}, "Select 1 or 2 objects.")
+            return {'CANCELLED'}
+
+        # Prepare final names
+        new_lp_name = base + lp_suffix
+        new_hp_name = base + hp_suffix
+
+        # Check for name conflicts (exclude self)
+        for obj in bpy.data.objects:
+            if obj not in (lp_obj, hp_obj) and obj.name in (new_lp_name, new_hp_name):
+                self.report({'ERROR'}, f"Name '{obj.name}' already exists.")
+                return {'CANCELLED'}
+
+        # Rename only if needed
+        if lp_obj.name != new_lp_name:
+            lp_obj.name = new_lp_name
+        if hp_obj.name != new_hp_name:
+            hp_obj.name = new_hp_name
+
+        self.report({'INFO'}, f"Renamed: {lp_obj.name} / {hp_obj.name}")
+        return {'FINISHED'}
+class OBJECT_OT_SwapLPHPCollections(bpy.types.Operator):
+    bl_idname = "object.swap_lphp_collections"
+    bl_label = "Swap LP/HP Collections"
+    bl_description = "Swap collections of LP and HP objects"
+
+    def execute(self, context):
+        settings = context.scene.rename_settings
+        selected = context.selected_objects
+        lp_suffix = settings.lp_suffix
+        hp_suffix = settings.hp_suffix
+
+        def strip_suffix(name, suffix):
+            return name[:-len(suffix)] if name.endswith(suffix) else None
+
+        if len(selected) == 1:
+            obj = selected[0]
+            if obj.name.endswith(lp_suffix):
+                base = strip_suffix(obj.name, lp_suffix)
+                counterpart = bpy.data.objects.get(base + hp_suffix)
+                if not counterpart:
+                    self.report({'ERROR'}, "Matching HP object not found.")
+                    return {'CANCELLED'}
+                lp_obj, hp_obj = obj, counterpart
+            elif obj.name.endswith(hp_suffix):
+                base = strip_suffix(obj.name, hp_suffix)
+                counterpart = bpy.data.objects.get(base + lp_suffix)
+                if not counterpart:
+                    self.report({'ERROR'}, "Matching LP object not found.")
+                    return {'CANCELLED'}
+                lp_obj, hp_obj = counterpart, obj
+            else:
+                self.report({'ERROR'}, "Object name must end with LP or HP suffix")
+                return {'CANCELLED'}
+        elif len(selected) == 2:
+            obj1, obj2 = selected
+            base1 = strip_suffix(obj1.name, lp_suffix) or strip_suffix(obj1.name, hp_suffix)
+            base2 = strip_suffix(obj2.name, lp_suffix) or strip_suffix(obj2.name, hp_suffix)
+            if base1 != base2:
+                self.report({'ERROR'}, "Objects must share the same base name")
+                return {'CANCELLED'}
+            lp_obj, hp_obj = (obj1, obj2) if obj1.name.endswith(lp_suffix) else (obj2, obj1)
+        else:
+            self.report({'ERROR'}, "Select 1 or 2 objects")
+            return {'CANCELLED'}
+
+        lp_cols = [col for col in lp_obj.users_collection]
+        hp_cols = [col for col in hp_obj.users_collection]
+
+        for col in lp_cols:
+            col.objects.unlink(lp_obj)
+        for col in hp_cols:
+            col.objects.unlink(hp_obj)
+        for col in lp_cols:
+            col.objects.link(hp_obj)
+        for col in hp_cols:
+            col.objects.link(lp_obj)
+
+        self.report({'INFO'}, f"Swapped collections for {lp_obj.name} and {hp_obj.name}")
+        return {'FINISHED'}
+
 class OBJECT_OT_VerifyLPPairs(bpy.types.Operator):
     bl_idname = "object.verify_lp_pairs"
     bl_label = "Verify LP/HP Pairs"
@@ -285,7 +413,8 @@ class OBJECT_OT_RefreshExportCollections(bpy.types.Operator):
 
         self.report({'INFO'}, "Refreshed collection lists.")
         return {'FINISHED'}
-class EXPORT_OT_highpoly(bpy.types.Operator):
+
+# class EXPORT_OT_highpoly(bpy.types.Operator):
     bl_idname = "export_collections.export_highpoly"
     bl_label = "Export High Poly Collections"
 
@@ -345,7 +474,7 @@ class EXPORT_OT_highpoly(bpy.types.Operator):
 
         self.report({'INFO'}, f"Exported High Poly FBX to {export_filename}")
         return {'FINISHED'}
-class EXPORT_OT_lowpoly(bpy.types.Operator):
+# class EXPORT_OT_lowpoly(bpy.types.Operator):
     bl_idname = "export_collections.export_lowpoly"
     bl_label = "Export Low Poly Collections"
 
@@ -355,7 +484,7 @@ class EXPORT_OT_lowpoly(bpy.types.Operator):
 
         settings = context.scene.rename_settings
         export_path = bpy.path.abspath(settings.export_path)
-        export_filename = settings.highpoly_filename
+        export_filename = settings.lowpoly_filename
         full_export_path = os.path.join(export_path, export_filename)
 
         export_objects = []
@@ -405,6 +534,80 @@ class EXPORT_OT_lowpoly(bpy.types.Operator):
 
         self.report({'INFO'}, f"Exported Low Poly FBX to {export_filename}")
         return {'FINISHED'}
+
+class OBJECT_OT_ExportSelectedMeshSets(bpy.types.Operator):
+    bl_idname = "export_collections.export_mesh_set"
+    bl_label = "Export Mesh Set"
+    bl_description = "Export selected mesh collections (HP or LP) as a single FBX"
+
+    type: bpy.props.EnumProperty(
+        name="Set Type",
+        items=[
+            ('HP', "High Poly", "Export High Poly set"),
+            ('LP', "Low Poly", "Export Low Poly set")
+        ],
+        default='HP'
+    )
+
+    def execute(self, context):
+        import os
+        import uuid
+
+        settings = context.scene.rename_settings
+
+        export_path = bpy.path.abspath(settings.export_path)
+        export_filename = settings.highpoly_filename if self.type == 'HP' else settings.lowpoly_filename
+        full_export_path = os.path.join(export_path, export_filename)
+
+        collection_list = (
+            settings.highpoly_collections if self.type == 'HP'
+            else settings.lowpoly_collections
+        )
+
+        export_objects = []
+
+        for item in collection_list:
+            if item.enabled:
+                col = bpy.data.collections.get(item.name)
+                if col:
+                    for obj in col.all_objects:
+                        if obj.type == 'MESH':
+                            export_objects.append(obj)
+
+        if not export_objects:
+            self.report({'WARNING'}, "No mesh objects found in selected collections.")
+            return {'CANCELLED'}
+
+        # Create a temporary export collection
+        temp_col_name = f"__temp_export_{uuid.uuid4().hex[:6]}"
+        temp_collection = bpy.data.collections.new(temp_col_name)
+        context.scene.collection.children.link(temp_collection)
+
+        bpy.ops.object.select_all(action='DESELECT')
+
+        for obj in export_objects:
+            temp_collection.objects.link(obj)
+            obj.hide_set(False)
+            obj.hide_viewport = False
+            obj.hide_render = False
+            obj.select_set(True)
+
+        bpy.ops.export_scene.fbx(
+            filepath=full_export_path,
+            use_selection=True,
+            apply_unit_scale=True,
+            bake_space_transform=True
+        )
+
+        context.scene.collection.children.unlink(temp_collection)
+        bpy.data.collections.remove(temp_collection)
+
+        bpy.ops.object.select_all(action='DESELECT')
+
+        self.report({'INFO'}, f"Exported {self.type} mesh set to {export_filename}")
+        return {'FINISHED'}
+
+
 class OBJECT_OT_ExportSelectedCollections(bpy.types.Operator):
     bl_idname = "object.export_selected_collections"
     bl_label = "Export Selected Collections"
@@ -544,6 +747,20 @@ class OBJECT_OT_DisableKeepSharp(bpy.types.Operator):
         self.report({'INFO'}, f"Disabled Keep Sharp on {count} modifier(s).")
         return {'FINISHED'}
 
+class OBJECT_OT_ToggleWireOverlay(bpy.types.Operator):
+    bl_idname = "object.toggle_wire_overlay"
+    bl_label = "Toggle Wireframe Overlay"
+    bl_description = "Toggle 'show wire' overlay for selected mesh objects"
+
+    def execute(self, context):
+        toggled = 0
+        for obj in context.selected_objects:
+            if obj.type == 'MESH':
+                obj.show_wire = not obj.show_wire
+                toggled += 1
+        self.report({'INFO'}, f"Toggled wire overlay on {toggled} object(s).")
+        return {'FINISHED'}
+
 
 # Panels
 
@@ -565,13 +782,19 @@ class VIEW3D_PT_RenamePanel(bpy.types.Panel):
         box1.prop(settings, "hp_suffix")
         box1.operator("object.rename_lphp", icon="FONT_DATA")
         box1.operator("object.swap_lphp", icon="FILE_REFRESH")
+        box1.operator("object.swap_lphp_names", icon="FILE_REFRESH")
+        box1.operator("object.swap_lphp_collections", icon="FILE_REFRESH")
         box1.operator("object.verify_lp_pairs", icon="CHECKMARK")
 
         box2 = layout.box()
-        box2.label(text="Find & Replace", icon="VIEWZOOM")
-        box2.prop(settings, "find_text")
-        box2.prop(settings, "replace_text")
-        box2.operator("object.find_replace_names", icon="VIEWZOOM")
+        box2.label(text="Wireframe Tools")
+        box2.operator("object.toggle_wire_overlay", text="Toggle Wire Overlay on Selected")
+
+        box3 = layout.box()
+        box3.label(text="Find & Replace", icon="VIEWZOOM")
+        box3.prop(settings, "find_text")
+        box3.prop(settings, "replace_text")
+        box3.operator("object.find_replace_names", icon="VIEWZOOM")
 
         layout.separator()
 
@@ -600,7 +823,7 @@ class VIEW3D_PT_ExportPanel(bpy.types.Panel):
         
         # Input for high poly export filename
         box_hp.prop(settings, "highpoly_filename")
-        box_hp.operator("export_collections.export_highpoly", icon='EXPORT')
+        box_hp.operator("export_collections.export_mesh_set", text="Export High Poly").type = 'HP'
 
         # Low Poly section
         box_lp = box1.box()
@@ -610,7 +833,8 @@ class VIEW3D_PT_ExportPanel(bpy.types.Panel):
 
         # Input for low poly export filename
         box_lp.prop(settings, "lowpoly_filename")
-        box_lp.operator("export_collections.export_lowpoly", icon='EXPORT')
+        box_lp.operator("export_collections.export_mesh_set", text="Export Low Poly").type = 'LP'
+
 
 class VIEW3D_PT_WeightedNormalizerPanel(bpy.types.Panel):
     bl_label = "LP Weighted Normalizer"
@@ -629,19 +853,16 @@ class VIEW3D_PT_WeightedNormalizerPanel(bpy.types.Panel):
         box1.operator("object.del_weighted_normal", text="Delete Weighted Normal", icon='EVENT_NDOF_BUTTON_MINUS')
         box1.operator("object.verify_weighted_normal", text="Verify Weighted Normal", icon='CHECKMARK')
 
-        box2 = box1.box()
-        box2.label(text="Weighted Normal Options", icon="PREFERENCES")
-        box2.operator("object.enable_keep_sharp", text="Enable Keep Sharp", icon='CHECKBOX_HLT')
-        box2.operator("object.disable_keep_sharp", text="Disable Keep Sharp", icon='CHECKBOX_DEHLT')
-
-
 
 classes = [
     ExportCollectionItem,
     RenameSettings, 
 
     OBJECT_OT_RenameLPHP, 
-    OBJECT_OT_SwapLPHP, 
+    OBJECT_OT_SwapLPHP,
+    OBJECT_OT_SwapLPHPCollections,
+    OBJECT_OT_SwapLPHPNames,
+
     OBJECT_OT_VerifyLPPairs, 
 
     OBJECT_OT_FindReplaceNames, 
@@ -650,8 +871,9 @@ classes = [
     VIEW3D_PT_ExportPanel,
     OBJECT_OT_ExportSelectedCollections,
     OBJECT_OT_RefreshExportCollections,
-    EXPORT_OT_highpoly,
-    EXPORT_OT_lowpoly,
+    #EXPORT_OT_highpoly,
+    #EXPORT_OT_lowpoly,
+    OBJECT_OT_ExportSelectedMeshSets,
 
     VIEW3D_PT_WeightedNormalizerPanel,
     OBJECT_OT_AddWeightedNormal,
@@ -659,6 +881,8 @@ classes = [
     OBJECT_OT_VerifyWeightedNormal,
     OBJECT_OT_EnableKeepSharp,
     OBJECT_OT_DisableKeepSharp,
+
+    OBJECT_OT_ToggleWireOverlay,
 ]
 
 def register():
