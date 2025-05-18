@@ -3,13 +3,14 @@ bl_info = {
     "author": "edisan27",
     "version": (0, 1),
     "blender": (4, 3, 2),
-    "location": "View3D > Sidebar > Rename Tools",
+    "location": "View3D > Sidebar > Ed's Tools",
     "description": "Bunch of tools I find useful",
     "category": "Object",
 }
 
 import bpy
 import os
+from bpy_extras import io_utils
 
 class ExportCollectionItem(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty(name="Collection Name")
@@ -30,6 +31,24 @@ class RenameSettings(bpy.types.PropertyGroup):
     # New properties for export filenames
     highpoly_filename: bpy.props.StringProperty(name="Filename", default="MeshName_high.fbx")
     lowpoly_filename: bpy.props.StringProperty(name="Filename", default="MeshName_low.fbx")
+    
+    export_hp_mesh_only: bpy.props.BoolProperty(
+        name="Only Mesh (HP)", default=True,
+        description="Export only mesh for High Poly"
+    )
+    export_hp_exclude_animation: bpy.props.BoolProperty(
+        name="Exclude Animation (HP)", default=True,
+        description="Exclude exporting for High Poly"
+    )
+    export_lp_mesh_only: bpy.props.BoolProperty(
+        name="Only Mesh (LP)", default=True,
+        description="Export only mesh for Low Poly"
+    )
+    export_lp_exclude_animation: bpy.props.BoolProperty(
+        name="Exclude Animation (LP)", default=True,
+        description="Exclude exporting animation for Low Poly"
+    )
+
 
 # ------------------------
 # Helper Function to Initialize Collections
@@ -592,12 +611,22 @@ class OBJECT_OT_ExportSelectedMeshSets(bpy.types.Operator):
             obj.hide_render = False
             obj.select_set(True)
 
-        bpy.ops.export_scene.fbx(
-            filepath=full_export_path,
-            use_selection=True,
-            apply_unit_scale=True,
-            bake_space_transform=True
-        )
+        mesh_only = settings.export_hp_mesh_only if self.type == 'HP' else settings.export_lp_mesh_only
+        exclude_anim = settings.export_hp_exclude_animation if self.type == 'HP' else settings.export_lp_exclude_animation
+
+        with bpy.context.temp_override(selected_objects=bpy.context.selected_objects):
+            bpy.ops.export_scene.fbx(
+                filepath=full_export_path,
+                use_selection=True,
+                apply_unit_scale=True,
+                bake_space_transform=True,
+                use_mesh_modifiers=True,
+                add_leaf_bones=False,
+                use_custom_props=False,
+                apply_scale_options='FBX_SCALE_NONE',
+                bake_anim=not exclude_anim
+            )
+
 
         context.scene.collection.children.unlink(temp_collection)
         bpy.data.collections.remove(temp_collection)
@@ -822,7 +851,11 @@ class VIEW3D_PT_ExportPanel(bpy.types.Panel):
             box_hp.prop(item, "enabled", text=item.name)
         
         # Input for high poly export filename
-        box_hp.prop(settings, "highpoly_filename")
+        box_hp_settings = box_hp.box()
+        box_hp_settings.prop(settings, "highpoly_filename")
+        box_hp_settings.label(text="High Poly Export Settings")
+        box_hp_settings.prop(settings, "export_hp_mesh_only")
+        box_hp_settings.prop(settings, "export_hp_exclude_animation")
         box_hp.operator("export_collections.export_mesh_set", text="Export High Poly").type = 'HP'
 
         # Low Poly section
@@ -832,7 +865,11 @@ class VIEW3D_PT_ExportPanel(bpy.types.Panel):
             box_lp.prop(item, "enabled", text=item.name)
 
         # Input for low poly export filename
-        box_lp.prop(settings, "lowpoly_filename")
+        box_lp_settings = box_lp.box()
+        box_lp_settings.prop(settings, "lowpoly_filename")
+        box_lp_settings.label(text="Low Poly Export Settings")
+        box_lp_settings.prop(settings, "export_lp_mesh_only")
+        box_lp_settings.prop(settings, "export_lp_exclude_animation")
         box_lp.operator("export_collections.export_mesh_set", text="Export Low Poly").type = 'LP'
 
 
