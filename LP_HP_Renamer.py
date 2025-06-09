@@ -901,15 +901,14 @@ classes = [
     OBJECT_OT_SwapLPHPNames,
 
     OBJECT_OT_VerifyLPPairs, 
-
     OBJECT_OT_FindReplaceNames, 
-    VIEW3D_PT_RenamePanel,
 
-    VIEW3D_PT_ExportPanel,
-    OBJECT_OT_ExportSelectedCollections,
     OBJECT_OT_RefreshExportCollections,
-    #EXPORT_OT_highpoly,
-    #EXPORT_OT_lowpoly,
+
+    VIEW3D_PT_RenamePanel,
+    VIEW3D_PT_ExportPanel,
+
+    OBJECT_OT_ExportSelectedCollections,
     OBJECT_OT_ExportSelectedMeshSets,
 
     VIEW3D_PT_WeightedNormalizerPanel,
@@ -918,7 +917,6 @@ classes = [
     OBJECT_OT_VerifyWeightedNormal,
     OBJECT_OT_EnableKeepSharp,
     OBJECT_OT_DisableKeepSharp,
-
     OBJECT_OT_ToggleWireOverlay,
 ]
 
@@ -931,7 +929,6 @@ def unregister():
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.rename_settings
-    del bpy.types.Scene.export_collection_names
 
 
 if __name__ == "__main__":
